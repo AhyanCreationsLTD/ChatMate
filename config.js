@@ -5,7 +5,7 @@
 
 // 1. Supabase Credentials
 const SB_URL = 'https://bhhedtjivhgercmepnrh.supabase.co';
-const SB_KEY = 'sb_secret_Lpf49MutMfjzxoKJ4g9zMA_lKZLnici'; // আপনার সিক্রেট কি
+const SB_KEY = 'sb_publishable_12RbtDLxvh9lmluYYRIfpA_zXQti3tj'; // আপনার সিক্রেট কি
 
 // ২. সুপাবেস ক্লায়েন্ট ইনিশিয়ালাইজেশন (এরর হ্যান্ডলিং সহ)
 if (typeof supabase === 'undefined') {
