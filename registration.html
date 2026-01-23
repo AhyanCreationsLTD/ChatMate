@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatMate | Create Account</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+  <script src="config.js"></script>
+
+  <style>
+    :root { --primary: #00d2ff; --bg: #020617; --card: #0f172a; --error: #ff4b2b; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+    body { background: var(--bg); color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow-x: hidden; padding: 20px; }
+
+    .card { background: var(--card); padding: 30px; border-radius: 25px; width: 100%; max-width: 420px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+    h2 { text-align: center; color: var(--primary); margin-bottom: 20px; font-weight: 800; letter-spacing: 1px; }
+
+    input { width: 100%; padding: 14px; margin: 8px 0; border-radius: 12px; border: 1px solid #1e293b; background: #020617; color: white; outline: none; font-size: 14px; transition: 0.3s; }
+    input:focus { border-color: var(--primary); }
+    
+    .tac-label { font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 10px; margin: 15px 0; cursor: pointer; line-height: 1.4; }
+    .btn { width: 100%; padding: 15px; border-radius: 12px; border: none; background: var(--primary); color: #000; font-weight: 800; cursor: pointer; margin-top: 10px; font-size: 15px; transition: 0.3s; }
+    .btn:active { transform: scale(0.98); }
+
+    /* Custom Error Box */
+    .err-box { background: rgba(255,75,43,0.1); color: var(--error); padding: 15px; border-radius: 12px; font-size: 13px; margin-bottom: 20px; display: none; line-height: 1.6; border: 1px solid rgba(255,75,43,0.2); white-space: pre-line; text-align: left; }
+
+    /* OTP Notification */
+    #notif {
+      position: fixed; top: -150px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 380px; 
+      background: #1e293b; padding: 15px; border-radius: 15px; border-bottom: 4px solid var(--primary); 
+      box-shadow: 0 25px 50px rgba(0,0,0,0.8); z-index: 10000; transition: 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    }
+    #notif.show { top: 20px; }
+
+    /* Progress & Loaders */
+    #otp-loader { display: none; text-align: center; padding: 30px 0; }
+    .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; margin: auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div id="notif">
+    <div style="font-size: 10px; color: var(--primary); font-weight: bold; text-transform: uppercase;">Security Center • now</div>
+    <div style="font-size: 14px; margin: 8px 0;">Your ChatMate OTP is: <b id="otp-display" style="font-size: 20px; letter-spacing: 2px;">000000</b></div>
+    <button onclick="copyOTP()" style="background:var(--primary); border:none; padding:6px 15px; border-radius:6px; font-weight:bold; cursor:pointer; float:right;">COPY CODE</button>
+  </div>
+
+  <div class="card">
+    <h2>Create Account</h2>
+    <div id="reg-err" class="err-box"></div>
+
+    <div id="form-area">
+      <input type="text" id="name" placeholder="Full Name">
+      <input type="number" id="phone" placeholder="Phone Number (01XXXXXXXXX)">
+      <div style="display:flex; gap:10px;">
+        <input type="date" id="dob" title="Birthday">
+        <input type="number" id="age" placeholder="Age">
+      </div>
+      <label class="tac-label">
+        <input type="checkbox" id="tac">
+        <span>By creating account you will agree with our <a href="tac.html" style="color:var(--primary); text-decoration: none;">Terms & Conditions</a></span>
+      </label>
+      <button class="btn" onclick="validateAndRegister()">CREATE ACCOUNT</button>
+      <p style="text-align: center; font-size: 13px; margin-top: 20px; color: #94a3b8;">
+        Already have an account? <a href="login.html" style="color: var(--primary); text-decoration: none;">Login</a>
+      </p>
+    </div>
+
+    <div id="otp-loader">
+      <div class="spinner"></div>
+      <p id="loader-text" style="font-size: 14px; color: var(--primary); margin-top: 20px; font-weight: 500;"></p>
+    </div>
+
+    <div id="otp-area" style="display: none;">
+      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 15px; text-align: center;">নম্বরে পাঠানো ৬ ডিজিটের ওটিপি কোডটি লিখুন</p>
+      <input type="number" id="otp-input" placeholder="Enter 6-digit OTP" style="font-size: 18px; letter-spacing: 5px;">
+      <button class="btn" onclick="finalVerify()">VERIFY & REGISTER</button>
+    </div>
+  </div>
+
+  <script>
+    let generatedOTP = null;
+    let registrationData = {};
+    // ডিভাইস আইডি তৈরির সিম্পল লজিক (শর্ত ৪ এর জন্য)
+    const deviceFingerprint = navigator.userAgent.length + navigator.vendor.length + (screen.height * screen.width);
+
+    async function validateAndRegister() {
+      const name = document.getElementById('name').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const dob = document.getElementById('dob').value;
+      const age = document.getElementById('age').value;
+      const tac = document.getElementById('tac').checked;
+      const errBox = document.getElementById('reg-err');
+
+      errBox.style.display = 'none';
+
+      // শর্ত ১: সবগুলো পূরণ আছে কিনা (Custom Message)
+      if (!name || !phone || !dob || !age) {
+        showCustomError("ChatMate\n\nদয়া করে সবগুলো তথ্য সঠিকভাবে পূরণ করুন। নাম, নম্বর, জন্মতারিখ এবং বয়স—সবগুলোই প্রয়োজন।");
+        return;
+      }
+
+      // শর্ত ২: বাংলাদেশি নম্বর চেক (Custom Message)
+      const bdRegex = /^(01[3-9]\d{8})$/;
+      if (!bdRegex.test(phone)) {
+        showCustomError(`ChatMate\nthis app is only for Bangladeshi people's. \nIf you want it on your country then let's know. \nhttps://t.me/ChatMateHelpCenter > Give Feedback`);
+        return;
+      }
+
+      // শর্ত ৩: চেক বক্স (Custom Message)
+      if (!tac) {
+        showCustomError("ChatMate\n\nএকাউন্ট তৈরি করতে আমাদের Terms and Conditions-এ অবশ্যই সম্মতি দিতে হবে।");
+        return;
+      }
+
+      // শর্ত ৪: এক ডিভাইসে সর্বোচ্চ ২টা একাউন্ট (Custom Message)
+      const { data: deviceCheck } = await _sb.from('users').select('phone').eq('device_id', deviceFingerprint);
+      if (deviceCheck && deviceCheck.length >= 2) {
+        showCustomError("ChatMate\n\nSecurity Limit!\nএকটি ডিভাইস থেকে সর্বোচ্চ ২টি একাউন্ট তৈরি করা সম্ভব। আপনি ইতিমধ্যে আপনার লিমিট শেষ করেছেন।");
+        return;
+      }
+
+      // শর্ত ৫: একটি নম্বরে একটি একাউন্ট (Custom Message)
+      const { data: phoneCheck } = await _sb.from('users').select('phone').eq('phone', phone).single();
+      if (phoneCheck) {
+        showCustomError("ChatMate\n\nOne account is already have in this number.\nএই নম্বর দিয়ে ইতিমধ্যে একটি একাউন্ট খোলা আছে। দয়া করে লগইন করুন।");
+        return;
+      }
+
+      // সব ঠিক থাকলে ওটিপি প্রসেস শুরু
+      registrationData = { name, phone, birthday: dob, age, device_id: deviceFingerprint };
+      startOTPProcess();
+    }
+
+    function startOTPProcess() {
+      document.getElementById('form-area').style.display = 'none';
+      const loader = document.getElementById('otp-loader');
+      const loaderText = document.getElementById('loader-text');
+      loader.style.display = 'block';
+
+      // ৫ সেকেন্ডের প্রাথমিক প্রগ্রেস
+      loaderText.innerText = "Your OTP Is In Progress...";
+      
+      setTimeout(() => {
+        loaderText.innerText = "We are Sending You a OTP , Please keep your screen On.";
+        
+        // রেন্ডমলি ৭ থেকে ১৫ সেকেন্ডের ডিলে
+        const randomDelay = Math.floor(Math.random() * (15000 - 7000 + 1)) + 7000;
+        
+        setTimeout(() => {
+          loaderText.innerText = "OTP Send Successfully. Wait For The OTP, Don't Close The Screen.";
+          
+          // ওটিপি জেনারেট এবং নোটিফিকেশন দেখানো
+          setTimeout(() => {
+            generatedOTP = Math.floor(100000 + Math.random() * 900000);
+            document.getElementById('otp-display').innerText = generatedOTP;
+            document.getElementById('notif').classList.add('show');
+            
+            loader.style.display = 'none';
+            document.getElementById('otp-area').style.display = 'block';
+          }, 2000);
+
+        }, randomDelay);
+      }, 5000);
+    }
+
+    async function finalVerify() {
+      const inputCode = document.getElementById('otp-input').value;
+      if (inputCode != generatedOTP) {
+        alert("ChatMate \n\nSorry your otp is not matching. Please enter the right OTP From Notifications.");
+        return;
+      }
+
+      // Supabase-এ ডাটা সেভ করা
+      const { error } = await _sb.from('users').insert([registrationData]);
+
+      if (!error) {
+        // Gun.js দিয়ে সেশন তৈরি
+        user.create(registrationData.phone, 'pass_' + registrationData.phone, () => {
+          window.location.href = 'home.html';
+        });
+      } else {
+        alert("Error: " + error.message);
+      }
+    }
+
+    function showCustomError(msg) {
+      const errBox = document.getElementById('reg-err');
+      errBox.innerText = msg;
+      errBox.style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function copyOTP() {
+      navigator.clipboard.writeText(generatedOTP);
+      document.getElementById('notif').classList.remove('show');
+      document.getElementById('otp-input').focus();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call | ChatMate</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; height: 100vh; overflow: hidden; font-family: sans-serif; }
+
+        /* Remote Full Screen Video */
+        #remote-video { width: 100vw; height: 100vh; object-fit: cover; }
+
+        /* Draggable Local Video */
+        #local-video {
+            position: absolute; top: 20px; right: 20px;
+            width: 120px; height: 180px; border-radius: 15px;
+            border: 2px solid #00d2ff; background: #222;
+            cursor: move; z-index: 100; object-fit: cover;
+        }
+
+        /* Call Controls */
+        .controls {
+            position: absolute; bottom: 40px; left: 50%;
+            transform: translateX(-50%); display: flex; gap: 20px;
+        }
+        .btn {
+            width: 60px; height: 60px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 20px; cursor: pointer; transition: 0.3s;
+            background: rgba(255,255,255,0.2); backdrop-filter: blur(10px);
+        }
+        .btn-end { background: #ff4b2b; }
+        .btn:hover { background: rgba(255,255,255,0.4); }
+
+        .minimized { width: 200px !important; height: 120px !important; bottom: 20px !important; left: 20px !important; transform: none !important; }
+    </style>
+</head>
+<body>
+
+    <video id="remote-video" autoplay></video>
+    <video id="local-video" autoplay muted></video>
+
+    <div class="controls" id="controls-bar">
+        <div class="btn" onclick="toggleMute()"><i class="fas fa-microphone" id="mic-icon"></i></div>
+        <div class="btn" onclick="toggleCamera()"><i class="fas fa-video" id="cam-icon"></i></div>
+        <div class="btn" onclick="minimizeCall()"><i class="fas fa-compress-alt"></i></div>
+        <div class="btn btn-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPhone = urlParams.get('phone');
+        const myPhone = localStorage.getItem('user_phone');
+        const peer = new Peer(myPhone);
+
+        let localStream;
+        let currentCall;
+
+        async function startCall() {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('local-video').srcObject = localStream;
+
+            const call = peer.call(targetPhone, localStream);
+            call.on('stream', remoteStream => {
+                document.getElementById('remote-video').srcObject = remoteStream;
+            });
+            currentCall = call;
+        }
+
+        // Draggable Logic for Local Video
+        const localVid = document.getElementById('local-video');
+        localVid.onmousedown = (e) => {
+            let shiftX = e.clientX - localVid.getBoundingClientRect().left;
+            let shiftY = e.clientY - localVid.getBoundingClientRect().top;
+            document.onmousemove = (e) => {
+                localVid.style.left = e.pageX - shiftX + 'px';
+                localVid.style.top = e.pageY - shiftY + 'px';
+            };
+            document.onmouseup = () => { document.onmousemove = null; };
+        };
+
+        function endCall() { if(currentCall) currentCall.close(); window.history.back(); }
+
+        function toggleMute() {
+            let enabled = localStream.getAudioTracks()[0].enabled;
+            localStream.getAudioTracks()[0].enabled = !enabled;
+            document.getElementById('mic-icon').className = enabled ? 'fas fa-microphone-slash' : 'fas fa-microphone';
+        }
+
+        function minimizeCall() {
+            alert("Minimize triggered! Opening background mode...");
+            // বাস্তব অ্যাপে এটি PiP (Picture in Picture) মুডে পাঠানো হয়
+        }
+
+        peer.on('open', startCall);
+    </script>
+</body>
+</html>

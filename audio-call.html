@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Call | ChatMate</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: #0f172a; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        .user-pic { width: 150px; height: 150px; border-radius: 50%; border: 4px solid #00d2ff; margin-bottom: 20px; }
+        .status { color: #00d2ff; margin-bottom: 50px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+        .controls { display: flex; gap: 30px; }
+        .btn { width: 70px; height: 70px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 24px; }
+        .btn-end { background: #ff4b2b; }
+    </style>
+</head>
+<body>
+
+    <img src="default-avatar.png" id="caller-pic" class="user-pic">
+    <h2 id="caller-name">Calling...</h2>
+    <p class="status" id="call-status">00:00</p>
+
+    <div class="controls">
+        <div class="btn" onclick="toggleMute()"><i class="fas fa-microphone"></i></div>
+        <div class="btn" onclick="switchToVideo()"><i class="fas fa-video"></i></div>
+        <div class="btn btn-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></div>
+    </div>
+
+    <audio id="remote-audio" autoplay></audio>
+
+    <script>
+        // অডিও কলের লজিক ভিডিও কলের মতোই, শুধু {video: false} থাকবে।
+        async function startAudioCall() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+            // PeerJS লজিক এখানে হবে...
+        }
+        function switchToVideo() {
+            window.location.href = `video-call.html?phone=${targetPhone}`;
+        }
+    </script>
+</body>
+</html>

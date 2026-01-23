@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatMate | Secure Home</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
+
+    <style>
+        :root { --primary: #00d2ff; --bg: #020617; --sidebar: #0f172a; --chat: #0b1120; --text: #f8fafc; --err: #ff4b2b; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+
+        /* Navigation Header */
+        .top-nav {
+            padding: 15px 20px;
+            background: var(--sidebar);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            z-index: 100;
+        }
+        .nav-icons { display: flex; gap: 20px; align-items: center; }
+        .nav-icons i { font-size: 20px; cursor: pointer; color: #94a3b8; transition: 0.3s; }
+        .nav-icons i:hover { color: var(--primary); }
+        
+        /* Drawer Menu Styles */
+        .drawer {
+            position: fixed; top: 0; left: -280px; width: 280px; height: 100%;
+            background: var(--sidebar); z-index: 1000; transition: 0.4s;
+            box-shadow: 10px 0 30px rgba(0,0,0,0.5); padding: 20px;
+        }
+        .drawer.active { left: 0; }
+        .drawer-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            display: none; z-index: 999; backdrop-filter: blur(4px);
+        }
+        .drawer h2 { color: var(--primary); margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .menu-link {
+            display: flex; align-items: center; gap: 15px; padding: 15px;
+            color: var(--text); text-decoration: none; border-radius: 10px;
+            margin-bottom: 5px; transition: 0.3s;
+        }
+        .menu-link:hover { background: rgba(0, 210, 255, 0.1); color: var(--primary); }
+
+        .notif-badge { position: relative; }
+        .notif-badge span {
+            position: absolute; top: -5px; right: -8px;
+            background: var(--err); color: white; font-size: 10px;
+            padding: 2px 5px; border-radius: 50%; font-weight: bold;
+        }
+
+        /* Search Section */
+        .search-container { padding: 15px 20px; background: rgba(0,0,0,0.2); }
+        .search-box {
+            background: #1e293b; display: flex; padding: 10px 15px;
+            border-radius: 12px; align-items: center; gap: 10px;
+        }
+        .search-box input { background: transparent; border: none; color: white; flex: 1; outline: none; }
+
+        /* Chat List */
+        .chat-list { height: calc(100vh - 140px); overflow-y: auto; padding-bottom: 20px; }
+        .chat-item {
+            display: flex; align-items: center; padding: 15px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.02);
+            cursor: pointer; transition: 0.2s; position: relative;
+        }
+        .chat-item:active { background: rgba(255,255,255,0.05); }
+        .avatar-box { position: relative; margin-right: 15px; }
+        .avatar-box img { width: 55px; height: 55px; border-radius: 50%; object-fit: cover; background: #1e293b; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--sidebar); position: absolute; bottom: 3px; right: 3px; background: #64748b; }
+        .chat-info { flex: 1; }
+        .chat-info h4 { font-size: 16px; margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .chat-info p { font-size: 13px; color: #94a3b8; }
+        .time { font-size: 11px; color: #64748b; }
+
+        /* Context Menu */
+        #context-menu { position: fixed; background: #1e293b; border-radius: 10px; padding: 10px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 5000; }
+        .menu-opt { padding: 10px 25px; cursor: pointer; color: var(--text); font-size: 14px; }
+        .menu-opt:hover { background: var(--err); color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="drawer-overlay" id="overlay" onclick="toggleMenu()"></div>
+    <div class="drawer" id="drawer">
+        <h2>ChatMate</h2>
+        <a href="profile.html" class="menu-link"><i class="fas fa-user"></i> My Profile</a>
+        <a href="terms.html" class="menu-link"><i class="fas fa-user-shield"></i> Terms and Conditions</a>
+        <a href="privacy.html" class="menu-link"><i class="fas fa-lock"></i> Privacy Policy</a>
+        <a href="about.html" class="menu-link"><i class="fas fa-circle"></i> About Us</a>
+        <a href="community.html" class="menu-link"><i class="fas fa-users"></i> Join Community</a>
+        <div style="position: absolute; bottom: 20px; width: 230px;">
+            <a href="login.html" class="menu-link" style="color: var(--err);"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </div>
+
+    <div id="context-menu">
+        <div class="menu-opt" id="delete-chat-btn"><i class="fas fa-trash"></i> Delete Contact</div>
+    </div>
+
+    <div class="top-nav">
+        <i class="fas fa-bars" onclick="toggleMenu()" style="font-size: 20px; cursor: pointer;"></i>
+        <h1>ChatMate</h1>
+        <div class="nav-icons">
+            <div class="notif-badge" onclick="location.href='notifications.html'">
+                <i class="fas fa-bell"></i>
+                <span id="notif-count">0</span>
+            </div>
+            <i class="fas fa-user-circle" onclick="location.href='profile.html'"></i>
+        </div>
+    </div>
+
+    <div class="search-container">
+        <div class="search-box">
+            <i class="fas fa-user-plus" style="color: var(--primary)"></i>
+            <input type="number" id="new-phone" placeholder="Enter phone to add contact...">
+            <button onclick="addContact()" style="background:transparent; border:none; color:var(--primary); font-weight:bold; cursor:pointer;">ADD</button>
+        </div>
+    </div>
+
+    <div class="chat-list" id="chat-list"></div>
+
+    <script>
+    // এই কোডটি আপনার home.html এর স্ক্রিপ্টের একদম নিচে পেস্ট করুন
+const peer = new Peer(myPhone); // আপনার ফোন নম্বর দিয়ে পিয়ার আইডি
+
+peer.on('call', (incomingCall) => {
+    // কলদাতার নম্বর বা নাম জানার চেষ্টা (কল আইডি থেকে)
+    const callerId = incomingCall.peer;
+    
+    // একটি রিংটোন বাজানো (ঐচ্ছিক)
+    const audio = new Audio('https://www.soundjay.com/phone/phone-calling-1.mp3');
+    audio.play();
+
+    // কল পপ-আপ বা কনফার্মেশন
+    const accept = confirm("Incoming Video Call from: " + callerId + "\n\nClick OK to Answer");
+
+    if (accept) {
+        audio.pause();
+        // কল রিসিভ করার জন্য ভিডিও কল পেজে নিয়ে যাওয়া
+        window.location.href = `video-call.html?phone=${callerId}&action=answer`;
+    } else {
+        audio.pause();
+        incomingCall.close();
+        alert("Call Declined");
+    }
+});
+
+        const myPhone = localStorage.getItem('user_phone');
+        let selectedUser = null;
+
+        function toggleMenu() {
+            const drawer = document.getElementById('drawer');
+            const overlay = document.getElementById('overlay');
+            drawer.classList.toggle('active');
+            overlay.style.display = drawer.classList.contains('active') ? 'block' : 'none';
+        }
+
+        async function addContact() {
+            const phone = document.getElementById('new-phone').value;
+            if(!phone || phone === myPhone) return alert("Invalid number");
+
+            const { data } = await _sb.from('users').select('*').eq('phone', phone).single();
+            if(data) {
+                gun.get('chatmate_contacts').get(myPhone).get(phone).put({
+                    name: data.name,
+                    phone: data.phone,
+                    avatar: data.avatar_url || ''
+                });
+                alert(data.name + " added!");
+                document.getElementById('new-phone').value = "";
+            } else {
+                alert("User not found!");
+            }
+        }
+
+        function loadChats() {
+            const listDiv = document.getElementById('chat-list');
+            gun.get('chatmate_contacts').get(myPhone).map().on((data, id) => {
+                if(!data) {
+                    const el = document.getElementById('item-' + id);
+                    if(el) el.remove();
+                    return;
+                }
+
+                let existing = document.getElementById('item-' + data.phone);
+                if(!existing) {
+                    existing = document.createElement('div');
+                    existing.id = 'item-' + data.phone;
+                    existing.className = 'chat-item';
+                    listDiv.prepend(existing);
+                }
+
+                existing.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    selectedUser = data.phone;
+                    const menu = document.getElementById('context-menu');
+                    menu.style.display = 'block';
+                    menu.style.left = e.pageX + 'px';
+                    menu.style.top = e.pageY + 'px';
+                };
+
+                existing.onclick = () => location.href = `chat.html?phone=${data.phone}`;
+
+                existing.innerHTML = `
+                    <div class="avatar-box">
+                        <img src="${data.avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}">
+                        <div class="status-dot"></div>
+                    </div>
+                    <div class="chat-info">
+                        <h4>${data.name} <span class="time">Just now</span></h4>
+                        <p>Tap to start conversation</p>
+                    </div>
+                `;
+            });
+        }
+
+        document.getElementById('delete-chat-btn').onclick = () => {
+            if(confirm("Delete this contact?")) {
+                gun.get('chatmate_contacts').get(myPhone).get(selectedUser).put(null);
+                document.getElementById('context-menu').style.display = 'none';
+            }
+        };
+
+        window.onclick = () => document.getElementById('context-menu').style.display = 'none';
+        window.onload = loadChats;
+    </script>
+</body>
+</html>
