@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatMate | Create Account</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    :root { --primary: #00d2ff; --bg: #020617; --card: #0f172a; --error: #ff4b2b; --success: #00ff88; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+    body { background: var(--bg); color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+
+    .card { background: var(--card); padding: 30px; border-radius: 25px; width: 100%; max-width: 420px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative; }
+    h2 { text-align: center; color: var(--primary); margin-bottom: 20px; font-weight: 800; letter-spacing: 1px; }
+
+    input { width: 100%; padding: 14px; margin: 8px 0; border-radius: 12px; border: 1px solid #1e293b; background: #020617; color: white; outline: none; font-size: 14px; transition: 0.3s; }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(0, 210, 255, 0.2); }
+    
+    .tac-label { font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 10px; margin: 15px 0; cursor: pointer; }
+    .btn { width: 100%; padding: 15px; border-radius: 12px; border: none; background: var(--primary); color: #000; font-weight: 800; cursor: pointer; margin-top: 10px; font-size: 15px; transition: 0.3s; }
+    .btn:hover { transform: translateY(-2px); opacity: 0.9; }
+
+    /* Custom Error Box */
+    .err-box { 
+      background: rgba(255,75,43,0.1); color: var(--error); padding: 15px; border-radius: 12px; 
+      font-size: 13px; margin-bottom: 20px; display: none; border: 1px solid rgba(255,75,43,0.2); 
+      white-space: pre-line; animation: fadeIn 0.3s; 
+    }
+
+    /* Loader */
+    #loader-overlay { display: none; text-align: center; padding: 40px 0; }
+    .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; margin: auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Success Pop-up */
+    #success-box {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+      background: #1e293b; padding: 30px; border-radius: 20px; text-align: center;
+      border: 1px solid var(--success); box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+      display: none; z-index: 1000; opacity: 0; transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    #success-box.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div id="success-box">
+    <div style="font-size: 50px; margin-bottom: 15px;">🎉</div>
+    <h3 style="color: var(--success); margin-bottom: 10px;">Registration Successful!</h3>
+    <p id="success-msg" style="font-size: 14px; color: #94a3b8; line-height: 1.5;"></p>
+  </div>
+
+  <div class="card">
+    <div id="main-content">
+      <h2>Create Account</h2>
+      <div id="reg-err" class="err-box"></div>
+
+      <div id="form-area">
+        <input type="text" id="name" placeholder="Full Name">
+        <input type="email" id="email" placeholder="Email Address">
+        <input type="number" id="phone" placeholder="Phone (01XXXXXXXXX)">
+        <div style="display:flex; gap:10px;">
+          <input type="date" id="dob" title="Birthday">
+          <input type="password" id="pass" placeholder="Password">
+        </div>
+        <label class="tac-label">
+          <input type="checkbox" id="tac">
+          <span>Agree with <a href="tac.html" style="color:var(--primary); text-decoration: none;">Terms & Conditions</a></span>
+        </label>
+        <button class="btn" onclick="validateAndRegister()">CREATE ACCOUNT</button>
+        <p style="text-align: center; font-size: 13px; margin-top: 20px; color: #94a3b8;">
+          Already have an account? <a href="login.html" style="color: var(--primary); text-decoration: none;">Login</a>
+        </p>
+      </div>
+    </div>
+
+    <div id="loader-overlay">
+      <div class="spinner"></div>
+      <p id="loader-text" style="color: var(--primary); margin-top: 20px; font-weight: 600; font-size: 15px;"></p>
+      <p style="font-size: 12px; color: #64748b; margin-top: 10px;">Please do not close this window</p>
+    </div>
+  </div>
+
+  <script>
+    // ডিভাইস আইডি জেনারেশন
+    const deviceID = navigator.userAgent.length + (screen.height * screen.width);
+
+    async function validateAndRegister() {
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const dob = document.getElementById('dob').value;
+      const pass = document.getElementById('pass').value;
+      const tac = document.getElementById('tac').checked;
+
+      // ১. ভ্যালিডেশন চেক
+      if (!name || !email || !phone || !dob || !pass) {
+        showCustomError("ChatMate\n\nসবগুলো তথ্য সঠিকভাবে পূরণ করুন।");
+        return;
+      }
+      if (!tac) {
+        showCustomError("ChatMate\n\nশর্তাবলীতে সম্মতি দেওয়া প্রয়োজন।");
+        return;
+      }
+
+      // ২. সুপাবেস চেক (ডুপ্লিকেট ফোন এবং ডিভাইস লিমিট)
+      try {
+        const { data: devices } = await _sb.from('users').select('id').eq('device_id', deviceID);
+        if (devices && devices.length >= 2) {
+          showCustomError("ChatMate\n\nSecurity Limit!\nএক ডিভাইসে ২টির বেশি একাউন্ট সম্ভব নয়।");
+          return;
+        }
+
+        const { data: phoneExist } = await _sb.from('users').select('phone').eq('phone', phone).single();
+        if (phoneExist) {
+          showCustomError("ChatMate\n\nএই নম্বর দিয়ে ইতিমধ্যে একাউন্ট খোলা আছে।");
+          return;
+        }
+
+        // সব ঠিক থাকলে প্রসেসিং শুরু
+        runRegistration({ name, email, phone, dob, pass });
+      } catch (e) {
+        showCustomError("Connection Error! Please try again.");
+      }
+    }
+
+    async function runRegistration(user) {
+      document.getElementById('main-content').style.display = 'none';
+      const loaderOverlay = document.getElementById('loader-overlay');
+      const loaderText = document.getElementById('loader-text');
+      loaderOverlay.style.display = 'block';
+
+      // স্টেপ ১: সিকিউরিটি অ্যানিমেশন
+      loaderText.innerText = "Securing Connection...";
+      await new Promise(r => setTimeout(r, 1500));
+
+      // স্টেপ ২: সুপাবেস অথেনটিকেশন
+      loaderText.innerText = "Creating Secure Account...";
+      const { data: authData, error: authError } = await _sb.auth.signUp({
+        email: user.email,
+        password: user.pass
+      });
+
+      if (authError) {
+        resetUI(authError.message);
+        return;
+      }
+
+      // স্টেপ ৩: প্রোফাইল তৈরি
+      loaderText.innerText = "Setting Up Profile...";
+      const { error: dbError } = await _sb.from('users').insert([{
+        id: authData.user.id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        birthday: user.dob,
+        device_id: deviceID
+      }]);
+
+      if (dbError) {
+        resetUI(dbError.message);
+        return;
+      }
+
+      // সফল
+      loaderOverlay.style.display = 'none';
+      showSuccessPopup(user.name);
+    }
+
+    function showCustomError(msg) {
+      const eb = document.getElementById('reg-err');
+      eb.innerText = msg;
+      eb.style.display = 'block';
+      
+      // ৩ সেকেন্ড পর গায়েব হবে
+      setTimeout(() => {
+        eb.style.display = 'none';
+      }, 3000);
+    }
+
+    function showSuccessPopup(userName) {
+      const box = document.getElementById('success-box');
+      const msg = document.getElementById('success-msg');
+      msg.innerText = `Welcome ${userName}!\nYour account has been created.\nRedirecting...`;
+      
+      box.style.display = 'block';
+      setTimeout(() => box.classList.add('show'), 10);
+
+      // ৩ সেকেন্ড পর গায়েব এবং রিডাইরেক্ট
+      setTimeout(() => {
+        box.classList.remove('show');
+        setTimeout(() => {
+          box.style.display = 'none';
+          window.location.href = "home.html";
+        }, 400);
+      }, 3000);
+    }
+
+    function resetUI(err) {
+      document.getElementById('loader-overlay').style.display = 'none';
+      document.getElementById('main-content').style.display = 'block';
+      showCustomError(err);
+    }
+  </script>
+</body>
+</html>

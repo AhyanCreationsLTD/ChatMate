@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatMate | Login</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    :root { --primary: #00d2ff; --bg: #020617; --card: #0f172a; --error: #ff4b2b; --success: #00ff88; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+    body { background: var(--bg); color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+
+    .card { background: var(--card); padding: 35px; border-radius: 25px; width: 100%; max-width: 400px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative; }
+    h2 { text-align: center; color: var(--primary); margin-bottom: 20px; font-weight: 800; letter-spacing: 1px; }
+
+    input { width: 100%; padding: 14px; margin: 10px 0; border-radius: 12px; border: 1px solid #1e293b; background: #020617; color: white; outline: none; font-size: 15px; transition: 0.3s; text-align: center; }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(0, 210, 255, 0.2); }
+
+    .btn { width: 100%; padding: 15px; border-radius: 12px; border: none; background: var(--primary); color: #000; font-weight: 800; cursor: pointer; margin-top: 15px; transition: 0.3s; font-size: 15px; }
+    .btn:hover { transform: translateY(-2px); opacity: 0.9; }
+
+    .err-box { background: rgba(255,75,43,0.1); color: var(--error); padding: 15px; border-radius: 12px; font-size: 13px; margin-bottom: 20px; display: none; border: 1px solid rgba(255,75,43,0.2); white-space: pre-line; animation: fadeIn 0.3s; text-align: left; }
+
+    /* Processing Overlay */
+    #loader-overlay { display: none; text-align: center; padding: 40px 0; }
+    .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s infinite linear; margin: auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Success Pop-up */
+    #success-box {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+      background: #1e293b; padding: 30px; border-radius: 20px; text-align: center;
+      border: 1px solid var(--success); box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+      display: none; z-index: 1000; opacity: 0; transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    #success-box.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div id="success-box">
+    <div style="font-size: 50px; margin-bottom: 15px;">🔓</div>
+    <h3 style="color: var(--success); margin-bottom: 10px;">Login Successful!</h3>
+    <p id="success-msg" style="font-size: 14px; color: #94a3b8; line-height: 1.5;"></p>
+  </div>
+
+  <div class="card">
+    <div id="main-content">
+      <h2>ChatMate Login</h2>
+      <div id="err-display" class="err-box"></div>
+
+      <div id="login-form">
+        <input type="email" id="email" placeholder="Enter Email">
+        <input type="password" id="pass" placeholder="Enter Password">
+        <button class="btn" onclick="handleLogin()">LOGIN NOW</button>
+        
+        <p style="text-align: center; font-size: 13px; margin-top: 20px; color: #94a3b8;">
+          Don't have an account? <a href="registration.html" style="color: var(--primary); text-decoration: none;">Create One</a>
+        </p>
+      </div>
+    </div>
+
+    <div id="loader-overlay">
+      <div class="spinner"></div>
+      <p id="loader-text" style="color: var(--primary); margin-top: 20px; font-weight: 600; font-size: 15px;"></p>
+      <p style="font-size: 12px; color: #64748b; margin-top: 10px;">Verifying credentials...</p>
+    </div>
+  </div>
+
+  <script>
+    async function handleLogin() {
+      const email = document.getElementById('email').value.trim();
+      const pass = document.getElementById('pass').value.trim();
+
+      if (!email || !pass) {
+        showCustomError("ChatMate\n\nইমেইল এবং পাসওয়ার্ড দুটোই প্রয়োজন।");
+        return;
+      }
+
+      // প্রসেসিং শুরু
+      document.getElementById('main-content').style.display = 'none';
+      const loaderOverlay = document.getElementById('loader-overlay');
+      const loaderText = document.getElementById('loader-text');
+      loaderOverlay.style.display = 'block';
+
+      // ধাপ ১: এনিমেশন
+      loaderText.innerText = "Connecting to Server...";
+      await new Promise(r => setTimeout(r, 1500));
+
+      // ধাপ ২: সুপাবেস অথেনটিকেশন চেক
+      loaderText.innerText = "Verifying Account...";
+      const { data, error } = await _sb.auth.signInWithPassword({
+        email: email,
+        password: pass,
+      });
+
+      if (error) {
+        resetUI("ChatMate\n\nLogin Failed: " + error.message);
+        return;
+      }
+
+      // ধাপ ৩: সফল হলে পপ-আপ
+      loaderOverlay.style.display = 'none';
+      showSuccessPopup(email);
+    }
+
+    function showCustomError(msg) {
+      const eb = document.getElementById('err-display');
+      eb.innerText = msg;
+      eb.style.display = 'block';
+      
+      // ৩ সেকেন্ড পর গায়েব
+      setTimeout(() => {
+        eb.style.display = 'none';
+      }, 3000);
+    }
+
+    function showSuccessPopup(email) {
+      const box = document.getElementById('success-box');
+      const msg = document.getElementById('success-msg');
+      msg.innerText = `Welcome back!\n${email}\nRedirecting to your chats...`;
+      
+      box.style.display = 'block';
+      setTimeout(() => box.classList.add('show'), 10);
+
+      // ৩ সেকেন্ড পর রিডাইরেক্ট
+      setTimeout(() => {
+        box.classList.remove('show');
+        setTimeout(() => {
+          box.style.display = 'none';
+          window.location.href = "home.html";
+        }, 400);
+      }, 3000);
+    }
+
+    function resetUI(err) {
+      document.getElementById('loader-overlay').style.display = 'none';
+      document.getElementById('main-content').style.display = 'block';
+      showCustomError(err);
+    }
+  </script>
+</body>
+</html>

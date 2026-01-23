@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications | ChatMate</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
+    <style>
+        :root { --bg: #020617; --card: #0f172a; --primary: #00d2ff; --err: #ff4b2b; --text: #f8fafc; --system: #10b981; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        
+        /* Header */
+        .header { 
+            padding: 20px; background: var(--card); display: flex; align-items: center; 
+            justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        .header h2 { font-size: 18px; font-weight: 700; }
+        .clear-btn { font-size: 12px; color: var(--err); cursor: pointer; font-weight: 600; }
+
+        /* Notification List */
+        .notif-list { padding: 15px; }
+        
+        .notif-item { 
+            background: var(--card); padding: 15px; border-radius: 18px; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 15px; border: 1px solid rgba(255,255,255,0.03);
+            transition: 0.3s; animation: slideIn 0.3s ease-out; cursor: pointer;
+        }
+        .notif-item:active { transform: scale(0.98); background: rgba(255,255,255,0.05); }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .icon-box { 
+            width: 50px; height: 50px; border-radius: 15px; 
+            display: flex; justify-content: center; align-items: center; font-size: 20px; 
+        }
+
+        .type-missed { background: rgba(255, 75, 43, 0.1); color: var(--err); }
+        .type-system { background: rgba(16, 185, 129, 0.1); color: var(--system); }
+        .type-video { background: rgba(0, 210, 255, 0.1); color: var(--primary); }
+
+        .notif-content { flex: 1; }
+        .notif-content h4 { font-size: 15px; margin-bottom: 2px; font-weight: 600; }
+        .notif-content p { font-size: 12px; color: #94a3b8; line-height: 1.4; }
+        
+        .badge { 
+            font-size: 9px; padding: 2px 8px; border-radius: 5px; 
+            text-transform: uppercase; font-weight: 800; margin-bottom: 6px; display: inline-block;
+        }
+        .badge-missed { background: var(--err); color: white; }
+        .badge-system { background: var(--system); color: white; }
+        .badge-video { background: var(--primary); color: #000; }
+
+        .time { font-size: 10px; color: #64748b; margin-top: 5px; font-weight: 500; }
+
+        /* Empty State */
+        .empty-state { text-align: center; margin-top: 100px; color: #64748b; }
+        .empty-state i { font-size: 50px; margin-bottom: 15px; opacity: 0.3; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="header-left">
+            <i class="fas fa-chevron-left" onclick="history.back()" style="cursor:pointer; font-size: 18px;"></i>
+            <h2>Notifications</h2>
+        </div>
+        <div class="clear-btn" onclick="clearAllNotifications()">Clear All</div>
+    </div>
+
+    <div class="notif-list" id="notif-display">
+        </div>
+
+    <script>
+        const myPhone = localStorage.getItem('user_phone');
+
+        async function fetchNotifications() {
+            const display = document.getElementById('notif-display');
+
+            const { data: notifications, error } = await _sb
+                .from('notifications')
+                .select('*')
+                .eq('receiver_phone', myPhone)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                display.innerHTML = `<p style="text-align:center; color:var(--err); padding:20px;">Failed to load notifications.</p>`;
+                return;
+            }
+
+            if (!notifications || notifications.length === 0) {
+                display.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-bell-slash"></i>
+                        <p>No notifications yet!</p>
+                        <p style="font-size:12px;">We'll let you know when something happens.</p>
+                    </div>`;
+                return;
+            }
+
+            display.innerHTML = notifications.map(n => {
+                let typeClass = 'type-system';
+                let badgeClass = 'badge-system';
+                let icon = 'fas fa-bullhorn';
+                let label = 'System Alert';
+
+                if (n.type === 'missed_call') {
+                    typeClass = 'type-missed';
+                    badgeClass = 'badge-missed';
+                    icon = 'fas fa-phone-slash';
+                    label = 'Missed Audio Call';
+                } else if (n.type === 'missed_video') {
+                    typeClass = 'type-video';
+                    badgeClass = 'badge-video';
+                    icon = 'fas fa-video-slash';
+                    label = 'Missed Video Call';
+                }
+
+                return `
+                    <div class="notif-item" onclick="handleNotifClick('${n.sender_phone}', '${n.type}')">
+                        <div class="icon-box ${typeClass}">
+                            <i class="${icon}"></i>
+                        </div>
+                        <div class="notif-content">
+                            <span class="badge ${badgeClass}">${label}</span>
+                            <h4>${n.title || (n.sender_name || 'ChatMate User')}</h4>
+                            <p>${n.message || `You have a missed call from ${n.sender_phone}`}</p>
+                            <div class="time">${formatTime(n.created_at)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function clearAllNotifications() {
+            if(!confirm("Are you sure you want to clear all notifications?")) return;
+            
+            const { error } = await _sb
+                .from('notifications')
+                .delete()
+                .eq('receiver_phone', myPhone);
+
+            if (!error) fetchNotifications();
+        }
+
+        function handleNotifClick(phone, type) {
+            if (type.includes('call')) {
+                const callType = type.includes('video') ? 'video' : 'audio';
+                if(confirm(`Do you want to call back ${phone}?`)) {
+                    window.location.href = `${callType}-call.html?phone=${phone}&action=call`;
+                }
+            }
+        }
+
+        function formatTime(dateString) {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 0) {
+                return 'Today, ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else if (diffDays === 1) {
+                return 'Yesterday';
+            } else {
+                return date.toLocaleDateString();
+            }
+        }
+
+        // Real-time listener
+        const channel = _sb.channel('notif-updates')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'notifications', 
+                filter: `receiver_phone=eq.${myPhone}` 
+            }, payload => {
+                fetchNotifications();
+            })
+            .subscribe();
+
+        window.onload = fetchNotifications;
+    </script>
+</body>
+</html>

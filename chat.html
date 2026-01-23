@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatMate | Secure Conversation</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
+
+    <style>
+        :root { --primary: #00d2ff; --bg: #020617; --sidebar: #0f172a; --chat-bg: #0b1120; --text: #f8fafc; --err: #ff4b2b; --success: #10b981; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Chat Header */
+        .chat-header { padding: 10px 15px; background: var(--sidebar); display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); z-index: 100; }
+        .user-info { display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer; }
+        .user-info img { width: 42px; height: 42px; border-radius: 50%; border: 2px solid var(--primary); object-fit: cover; }
+        .user-status h4 { font-size: 15px; }
+        .user-status p { font-size: 11px; color: var(--success); }
+        #typing-indicator { font-style: italic; color: var(--primary); display: none; }
+
+        .call-btns { display: flex; gap: 20px; font-size: 18px; color: #94a3b8; }
+        .call-btns i:hover { color: var(--primary); cursor: pointer; }
+
+        /* Message Area */
+        .message-area {
+            flex: 1; overflow-y: auto; padding: 20px; 
+            background: linear-gradient(rgba(11, 17, 32, 0.95), rgba(11, 17, 32, 0.95)), url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
+            display: flex; flex-direction: column; gap: 8px;
+        }
+
+        .msg { max-width: 75%; padding: 10px 14px; border-radius: 18px; position: relative; font-size: 14.5px; line-height: 1.4; animation: fadeIn 0.2s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .msg.sent { align-self: flex-end; background: var(--primary); color: #000; border-bottom-right-radius: 2px; }
+        .msg.received { align-self: flex-start; background: #1e293b; color: white; border-bottom-left-radius: 2px; }
+        
+        .msg-info { display: flex; justify-content: flex-end; align-items: center; gap: 5px; font-size: 10px; margin-top: 4px; opacity: 0.7; }
+        .status-icon { font-size: 12px; }
+
+        /* Input Bar */
+        .input-bar { padding: 12px; background: var(--sidebar); display: flex; align-items: center; gap: 10px; }
+        .input-box { flex: 1; background: #020617; border-radius: 25px; padding: 5px 15px; display: flex; align-items: center; border: 1px solid rgba(255,255,255,0.05); }
+        .input-box input { flex: 1; background: transparent; border: none; color: white; padding: 10px; outline: none; font-size: 15px; }
+        .send-btn { background: var(--primary); width: 45px; height: 45px; border-radius: 50%; border: none; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.2s; }
+        .send-btn:active { transform: scale(0.9); }
+
+        /* Profile Modal */
+        .profile-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(5px); }
+    </style>
+</head>
+<body>
+
+    <div id="profile-overlay" class="profile-overlay">
+        <i class="fas fa-times" onclick="closeProfile()" style="position:absolute; top:20px; right:20px; font-size:24px; cursor:pointer;"></i>
+        <img id="p-overlay-img" style="width:150px; height:150px; border-radius:50%; border:3px solid var(--primary); object-fit: cover;">
+        <h2 id="p-overlay-name" style="margin-top:15px;">User Name</h2>
+        <p id="p-overlay-phone" style="color:#94a3b8; margin-top:5px;">+880</p>
+        <button onclick="blockUser()" style="background:transparent; color:var(--err); border:1px solid var(--err); padding:10px 25px; border-radius:25px; margin-top:30px; cursor:pointer; font-weight:bold;">
+            <i class="fas fa-ban"></i> Block User
+        </button>
+    </div>
+
+    <div class="chat-header">
+        <i class="fas fa-arrow-left" onclick="location.href='home.html'" style="margin-right:15px; cursor:pointer;"></i>
+        <div class="user-info" onclick="openProfile()">
+            <img id="target-avatar" src="https://cdn-icons-png.flaticon.com/512/149/149071.png">
+            <div class="user-status">
+                <h4 id="target-name">Loading...</h4>
+                <p id="target-online-status">Online</p>
+                <p id="typing-indicator">Typing...</p>
+            </div>
+        </div>
+        <div class="call-btns">
+            <i class="fas fa-phone-alt" onclick="startCall('audio')"></i>
+            <i class="fas fa-video" onclick="startCall('video')"></i>
+        </div>
+    </div>
+
+    <div class="message-area" id="msg-container"></div>
+
+    <div class="input-bar">
+        <div class="input-box">
+            <i class="far fa-smile" style="color:#94a3b8; cursor:pointer;"></i>
+            <input type="text" id="msg-input" placeholder="Type a message..." oninput="emitTyping()">
+            <i class="fas fa-paperclip" style="color:#94a3b8; cursor:pointer; margin-right:10px;"></i>
+        </div>
+        <button class="send-btn" onclick="sendMessage()">
+            <i class="fas fa-paper-plane" style="font-size: 18px;"></i>
+        </button>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPhone = urlParams.get('phone');
+        const myPhone = localStorage.getItem('user_phone');
+        const chatID = [myPhone, targetPhone].sort().join('_');
+        const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']); // Gun server
+
+        let typingTimeout;
+
+        // ১. টার্গেট ইউজারের প্রোফাইল লোড করা
+        async function loadTargetInfo() {
+            if(!targetPhone) return location.href='home.html';
+            const { data } = await _sb.from('users').select('*').eq('phone', targetPhone).single();
+            if(data) {
+                document.getElementById('target-name').innerText = data.name;
+                document.getElementById('target-avatar').src = data.avatar_url || `https://ui-avatars.com/api/?name=${data.name}&background=00d2ff&color=fff`;
+                window.targetData = data;
+            }
+        }
+
+        // ২. মেসেজ পাঠানো
+        function sendMessage() {
+            const text = document.getElementById('msg-input').value.trim();
+            if(!text) return;
+
+            const msgID = Date.now().toString() + myPhone.slice(-3);
+            const msgData = {
+                sender: myPhone,
+                text: text,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                status: 'sent',
+                timestamp: Date.now()
+            };
+
+            gun.get('chats').get(chatID).get(msgID).put(msgData);
+            document.getElementById('msg-input').value = "";
+            stopTyping();
+        }
+
+        // ৩. রিয়েল-টাইম মেসেজ লিসেনিং
+        function listenMessages() {
+            const container = document.getElementById('msg-container');
+            const processedMsgs = new Set();
+
+            gun.get('chats').get(chatID).map().on((data, id) => {
+                if(!data || processedMsgs.has(id)) return;
+                processedMsgs.add(id);
+
+                const isMine = data.sender === myPhone;
+
+                // সিন লজিক (Seen Logic)
+                if(!isMine && data.status !== 'seen') {
+                    gun.get('chats').get(chatID).get(id).put({ status: 'seen' });
+                }
+
+                const msgDiv = document.createElement('div');
+                msgDiv.className = `msg ${isMine ? 'sent' : 'received'}`;
+                msgDiv.id = 'msg-' + id;
+
+                renderMsgHTML(msgDiv, data, isMine);
+                container.appendChild(msgDiv);
+                container.scrollTop = container.scrollHeight;
+            });
+
+            // সিন স্ট্যাটাস রিয়েল-টাইম আপডেট
+            gun.get('chats').get(chatID).map().on((data, id) => {
+                const el = document.getElementById('msg-' + id);
+                if(el && data && data.sender === myPhone) {
+                    const statusIcon = el.querySelector('.status-icon');
+                    if(statusIcon) {
+                        statusIcon.innerHTML = data.status === 'seen' ? 
+                            '<i class="fas fa-check-double" style="color:#000; opacity:0.8"></i>' : 
+                            '<i class="fas fa-check"></i>';
+                    }
+                }
+            });
+        }
+
+        function renderMsgHTML(div, data, isMine) {
+            const icon = data.status === 'seen' ? 'fa-check-double' : 'fa-check';
+            const iconStyle = data.status === 'seen' ? 'color:#000' : '';
+            
+            div.innerHTML = `
+                ${data.text}
+                <div class="msg-info">
+                    ${data.time} 
+                    ${isMine ? `<span class="status-icon"><i class="fas ${icon}" style="${iconStyle}"></i></span>` : ''}
+                </div>
+            `;
+        }
+
+        // ৪. টাইপিং ইন্ডিকেটর
+        function emitTyping() {
+            gun.get('typing').get(chatID).get(myPhone).put(true);
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(stopTyping, 2000);
+        }
+
+        function stopTyping() {
+            gun.get('typing').get(chatID).get(myPhone).put(false);
+        }
+
+        function listenTyping() {
+            gun.get('typing').get(chatID).get(targetPhone).on(isTyping => {
+                const indicator = document.getElementById('typing-indicator');
+                const status = document.getElementById('target-online-status');
+                if(isTyping) {
+                    indicator.style.display = 'block';
+                    status.style.display = 'none';
+                } else {
+                    indicator.style.display = 'none';
+                    status.style.display = 'block';
+                }
+            });
+        }
+
+        // ৫. কল ফাংশন
+        function startCall(type) {
+            const page = type === 'video' ? 'video-call.html' : 'audio-call.html';
+            location.href = `${page}?phone=${targetPhone}&action=call`;
+        }
+
+        // ৬. প্রোফাইল হ্যান্ডলার
+        function openProfile() {
+            const data = window.targetData;
+            document.getElementById('p-overlay-name').innerText = data.name;
+            document.getElementById('p-overlay-phone').innerText = data.phone;
+            document.getElementById('p-overlay-img').src = document.getElementById('target-avatar').src;
+            document.getElementById('profile-overlay').style.display = 'flex';
+        }
+        function closeProfile() { document.getElementById('profile-overlay').style.display = 'none'; }
+
+        async function blockUser() {
+            if(confirm("Block this user? They can't message you anymore.")) {
+                await _sb.from('blocks').insert([{ blocker: myPhone, blocked: targetPhone }]);
+                alert("User Blocked!");
+                location.href = 'home.html';
+            }
+        }
+
+        window.onload = () => {
+            loadTargetInfo();
+            listenMessages();
+            listenTyping();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatMate | Secure Messenger</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    :root { --primary: #00d2ff; --secondary: #3a7bd5; --bg: #020617; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background-color: var(--bg); height: 100vh;
+      display: flex; justify-content: center; align-items: center;
+      overflow: hidden; font-family: 'Inter', sans-serif;
+    }
+
+    .splash-container { text-align: center; position: relative; z-index: 10; }
+
+    .logo {
+      font-size: 3.5rem; font-weight: 900; letter-spacing: 8px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      text-transform: uppercase; animation: logoEntrance 1.2s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+    }
+
+    @keyframes logoEntrance {
+      from { transform: scale(0.8); opacity: 0; filter: blur(15px); }
+      to { transform: scale(1); opacity: 1; filter: blur(0); }
+    }
+
+    .loader-wrapper {
+      width: 200px; height: 3px; background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px; margin: 40px auto 0; overflow: hidden;
+    }
+
+    .loader-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      box-shadow: 0 0 15px var(--primary);
+      transition: width 3s cubic-bezier(0.4, 0, 0.2, 1); /* ৩ সেকেন্ড করা হয়েছে অ্যাপ ফাস্ট করার জন্য */
+    }
+
+    .status-text {
+      margin-top: 20px; font-size: 11px; color: #94a3b8;
+      letter-spacing: 3px; text-transform: uppercase;
+    }
+
+    .glow {
+      position: absolute; width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(0,210,255,0.15) 0%, rgba(2,6,23,0) 70%);
+      z-index: 1; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      animation: pulseGlow 4s infinite alternate;
+    }
+
+    @keyframes pulseGlow {
+      from { transform: translate(-50%, -50%) scale(1); opacity: 0.1; }
+      to { transform: translate(-50%, -50%) scale(1.2); opacity: 0.2; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="glow"></div>
+
+  <div class="splash-container">
+    <div class="logo">ChatMate</div>
+    <div class="loader-wrapper">
+      <div class="loader-fill" id="fill"></div>
+    </div>
+    <p class="status-text" id="status">Initializing encryption...</p>
+  </div>
+
+  <script>
+    async function checkAuth() {
+        const fill = document.getElementById('fill');
+        const status = document.getElementById('status');
+
+        // ১. এনিমেশন শুরু (৩ সেকেন্ডের মধ্যে শেষ হবে)
+        setTimeout(() => { fill.style.width = '100%'; }, 100);
+
+        try {
+            // ২. সেশন চেক করা (ব্যাকগ্রাউন্ডে)
+            const { data: { session } } = await _sb.auth.getSession();
+            const storedPhone = localStorage.getItem('user_phone');
+
+            // ৩. ৩ সেকেন্ড পর রিডাইরেক্ট লজিক
+            setTimeout(() => {
+                if (session && session.user && storedPhone) {
+                    status.innerText = "Welcome Back!";
+                    // সেশন এবং ফোন নম্বর দুটোই থাকলে হোমে যাবে
+                    setTimeout(() => window.location.href = 'home.html', 500);
+                } else {
+                    status.innerText = "Security Check Complete";
+                    setTimeout(() => window.location.href = 'login.html', 500);
+                }
+            }, 3000); // ইউজারকে ৩ সেকেন্ড এনিমেশন দেখানো হবে
+
+        } catch (err) {
+            console.error("Auth Error:", err);
+            window.location.href = 'login.html';
+        }
+    }
+
+    window.onload = checkAuth;
+  </script>
+</body>
+</html>

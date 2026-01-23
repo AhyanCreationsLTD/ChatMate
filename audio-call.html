@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Call | ChatMate</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --primary: #00d2ff; --err: #ff4b2b; --bg: #020617; }
+        body { background: var(--bg); height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-family: 'Inter', sans-serif; overflow: hidden; }
+        
+        .user-pic { width: 150px; height: 150px; border-radius: 50%; border: 4px solid var(--primary); margin-bottom: 20px; object-fit: cover; box-shadow: 0 0 30px rgba(0, 210, 255, 0.2); }
+        
+        .caller-name { font-size: 24px; font-weight: 700; margin-bottom: 5px; }
+        .status { color: var(--primary); font-size: 18px; margin-bottom: 60px; font-family: 'Courier New', monospace; font-weight: bold; }
+        
+        /* Pulse Animation for Status */
+        .calling-animate { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+        .controls { display: flex; gap: 25px; }
+        .btn { width: 65px; height: 65px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 22px; transition: 0.3s; border: 1px solid rgba(255,255,255,0.1); }
+        .btn:active { transform: scale(0.9); }
+        .btn-end { background: var(--err); border: none; }
+        .btn.off { background: white; color: black; }
+
+        /* Audio Visualizer (Optional visual element) */
+        .visualizer { display: flex; gap: 5px; height: 30px; align-items: center; }
+        .bar { width: 4px; height: 10px; background: var(--primary); border-radius: 2px; animation: bounce 1s infinite alternate; }
+        .bar:nth-child(2) { animation-delay: 0.2s; }
+        .bar:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce { from { height: 5px; } to { height: 25px; } }
+    </style>
+</head>
+<body>
+
+    <img src="https://ui-avatars.com/api/?name=User&background=00d2ff&color=fff" id="caller-pic" class="user-pic">
+    <h2 id="caller-name" class="caller-name">Connecting...</h2>
+    <p class="status calling-animate" id="call-status">Ringing...</p>
+
+    <div class="visualizer" id="visualizer" style="display: none; margin-bottom: 30px;">
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+
+    <div class="controls">
+        <div class="btn" onclick="toggleMute()"><i class="fas fa-microphone" id="mic-icon"></i></div>
+        <div class="btn" onclick="switchToVideo()"><i class="fas fa-video"></i></div>
+        <div class="btn btn-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></div>
+    </div>
+
+    <audio id="remote-audio" autoplay></audio>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPhone = urlParams.get('phone');
+        const action = urlParams.get('action'); // 'call' or 'answer'
+        const myPhone = localStorage.getItem('user_phone');
+        
+        const peer = new Peer('chatmate-' + myPhone);
+        let localStream;
+        let currentCall;
+        let timerInterval;
+
+        // ১. ইউজার ডাটা লোড করা (Avatar & Name)
+        async function fetchUserData() {
+            const { data } = await _sb.from('users').select('*').eq('phone', targetPhone).single();
+            if(data) {
+                document.getElementById('caller-name').innerText = data.name;
+                document.getElementById('caller-pic').src = data.avatar_url || `https://ui-avatars.com/api/?name=${data.name}&background=00d2ff&color=fff`;
+            }
+        }
+
+        // ২. কল শুরু করা
+        async function init() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                
+                if (action === 'call') {
+                    makeAudioCall();
+                }
+            } catch (err) {
+                alert("Microphone access denied!");
+                window.history.back();
+            }
+        }
+
+        function makeAudioCall() {
+            const call = peer.call('chatmate-' + targetPhone, localStream);
+            handleCall(call);
+        }
+
+        // ৩. কল রিসিভ করা (Incoming call)
+        peer.on('call', (incomingCall) => {
+            if (action === 'answer') {
+                incomingCall.answer(localStream);
+                handleCall(incomingCall);
+            }
+        });
+
+        // ৪. কল স্ট্যাটাস এবং টাইমার হ্যান্ডলার
+        function handleCall(call) {
+            currentCall = call;
+            call.on('stream', remoteStream => {
+                document.getElementById('remote-audio').srcObject = remoteStream;
+                startTimer();
+                document.getElementById('visualizer').style.display = 'flex';
+                document.getElementById('call-status').classList.remove('calling-animate');
+            });
+
+            call.on('close', () => endCall());
+        }
+
+        function startTimer() {
+            let sec = 0;
+            timerInterval = setInterval(() => {
+                sec++;
+                let m = Math.floor(sec / 60);
+                let s = sec % 60;
+                document.getElementById('call-status').innerText = 
+                    `${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`;
+            }, 1000);
+        }
+
+        // ৫. কন্ট্রোলস
+        function toggleMute() {
+            let enabled = localStream.getAudioTracks()[0].enabled;
+            localStream.getAudioTracks()[0].enabled = !enabled;
+            const btn = document.getElementById('mic-icon').parentElement;
+            btn.classList.toggle('off', enabled);
+            document.getElementById('mic-icon').className = enabled ? 'fas fa-microphone-slash' : 'fas fa-microphone';
+        }
+
+        function switchToVideo() {
+            if(confirm("Switch to video call?")) {
+                location.href = `video-call.html?phone=${targetPhone}&action=call`;
+            }
+        }
+
+        function endCall() {
+            if(currentCall) currentCall.close();
+            if(localStream) localStream.getTracks().forEach(track => track.stop());
+            clearInterval(timerInterval);
+            window.location.href = 'home.html';
+        }
+
+        // PeerJS Error handling
+        peer.on('error', err => {
+            console.error(err);
+            alert("Connection error or user busy.");
+            endCall();
+        });
+
+        window.onload = () => {
+            fetchUserData();
+            peer.on('open', init);
+        };
+    </script>
+</body>
+</html>

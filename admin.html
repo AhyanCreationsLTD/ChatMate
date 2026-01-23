@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel | ChatMate</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
+    <style>
+        :root { --primary: #00d2ff; --bg: #020617; --card: #0f172a; --text: #f8fafc; --success: #10b981; --err: #ff4b2b; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; padding: 30px; }
+        
+        /* Stats Cards */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: var(--card); padding: 20px; border-radius: 15px; border-left: 4px solid var(--primary); }
+        .stat-card h5 { font-size: 12px; text-transform: uppercase; color: #94a3b8; }
+        .stat-card p { font-size: 24px; font-weight: bold; margin-top: 5px; }
+
+        /* Notification Panel */
+        .notif-panel { background: var(--card); padding: 25px; border-radius: 20px; margin-bottom: 30px; border: 1px solid rgba(255,255,255,0.05); }
+        .notif-form { display: flex; flex-direction: column; gap: 12px; }
+        .notif-form input, .notif-form textarea, .notif-form select {
+            background: #020617; border: 1px solid #1e293b; color: white; padding: 14px; border-radius: 10px; outline: none;
+        }
+        .btn-send { background: var(--primary); color: #000; border: none; padding: 14px; border-radius: 10px; font-weight: 800; cursor: pointer; transition: 0.3s; }
+        .btn-send:hover { opacity: 0.9; transform: scale(0.99); }
+
+        /* Table Design */
+        .table-container { background: var(--card); border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: rgba(255,255,255,0.03); color: var(--primary); padding: 15px; text-align: left; font-size: 13px; }
+        td { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 14px; }
+        
+        .user-cell { display: flex; align-items: center; gap: 12px; }
+        .user-img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: #334155; }
+        
+        .action-btns { display: flex; gap: 8px; }
+        .act-btn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; }
+        .btn-select { background: var(--primary); color: #000; }
+        .btn-delete { background: rgba(255, 75, 43, 0.1); color: var(--err); }
+        
+        .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--success); color: white; margin-left: 5px; }
+    </style>
+</head>
+<body>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2><i class="fas fa-user-shield"></i> ChatMate Admin</h2>
+        <button onclick="location.href='home.html'" style="background: transparent; color: #94a3b8; border: 1px solid #334155; padding: 8px 15px; border-radius: 8px; cursor: pointer;">Exit Dashboard</button>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card"><h5>Total Users</h5><p id="total-users">0</p></div>
+        <div class="stat-card" style="border-left-color: var(--success);"><h5>Active Now</h5><p id="active-users">0</p></div>
+        <div class="stat-card" style="border-left-color: orange;"><h5>Total Notifications</h5><p id="total-notifs">0</p></div>
+    </div>
+
+    <div class="notif-panel">
+        <h3 style="margin-bottom: 15px; font-size: 18px;">Broadcast Message</h3>
+        <div class="notif-form">
+            <select id="target-user">
+                <option value="all">📢 Everyone (Global Broadcast)</option>
+            </select>
+            <input type="text" id="notif-title" placeholder="Notice Title (e.g., System Maintenance)">
+            <textarea id="notif-body" rows="3" placeholder="Write your message here..."></textarea>
+            <button class="btn-send" onclick="sendPush()">Send Announcement</button>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>User Details</th>
+                    <th>Phone Number</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="user-table-body">
+                <tr><td colspan="3" style="text-align:center;">Loading user data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let allUsers = [];
+
+        async function initAdmin() {
+            // ১. ইউজার ডাটা আনা
+            const { data: users, error } = await _sb.from('users').select('*').order('created_at', {ascending: false});
+            if (error) return alert("Permission Denied");
+            
+            allUsers = users;
+            document.getElementById('total-users').innerText = users.length;
+
+            // ২. নোটিফিকেশন কাউন্ট আনা
+            const { count } = await _sb.from('notifications').select('*', { count: 'exact', head: true });
+            document.getElementById('total-notifs').innerText = count || 0;
+
+            // ৩. টেবিল রেন্ডার
+            renderTable(users);
+            
+            // ৪. সিলেক্ট বক্স আপডেট
+            const select = document.getElementById('target-user');
+            users.forEach(user => {
+                const opt = document.createElement('option');
+                opt.value = user.phone;
+                opt.innerText = `👤 ${user.name} (${user.phone})`;
+                select.appendChild(opt);
+            });
+        }
+
+        function renderTable(users) {
+            const tableBody = document.getElementById('user-table-body');
+            tableBody.innerHTML = users.map(user => `
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <img src="${user.avatar_url || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" class="user-img">
+                            <div>
+                                <strong>${user.name}</strong>
+                                ${user.status === 'online' ? '<span class="badge">Online</span>' : ''}
+                            </div>
+                        </div>
+                    </td>
+                    <td style="color: #94a3b8;">${user.phone}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="act-btn btn-select" onclick="setTarget('${user.phone}')">Message</button>
+                            <button class="act-btn btn-delete" onclick="deleteUser('${user.phone}')">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function setTarget(phone) {
+            document.getElementById('target-user').value = phone;
+            document.getElementById('notif-title').focus();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function deleteUser(phone) {
+            if(confirm(`Are you sure? This will delete user ${phone} permanently!`)) {
+                const { error } = await _sb.from('users').delete().eq('phone', phone);
+                if(!error) {
+                    alert("User Deleted");
+                    initAdmin(); // Refresh
+                }
+            }
+        }
+
+        async function sendPush() {
+            const target = document.getElementById('target-user').value;
+            const title = document.getElementById('notif-title').value;
+            const body = document.getElementById('notif-body').value;
+            const btn = document.querySelector('.btn-send');
+
+            if(!title || !body) return alert("Fill all fields!");
+
+            btn.innerText = "Processing...";
+            btn.disabled = true;
+
+            let notifications = [];
+            if (target === "all") {
+                notifications = allUsers.map(user => ({
+                    receiver_phone: user.phone,
+                    sender_name: "System Admin",
+                    title: title,
+                    message: body,
+                    type: 'system'
+                }));
+            } else {
+                notifications.push({
+                    receiver_phone: target,
+                    sender_name: "System Admin",
+                    title: title,
+                    message: body,
+                    type: 'system'
+                });
+            }
+
+            const { error } = await _sb.from('notifications').insert(notifications);
+
+            if (!error) {
+                alert("Broadcast sent successfully!");
+                document.getElementById('notif-title').value = "";
+                document.getElementById('notif-body').value = "";
+            } else {
+                alert("Error: " + error.message);
+            }
+            
+            btn.innerText = "Send Announcement";
+            btn.disabled = false;
+        }
+
+        window.onload = initAdmin;
+    </script>
+</body>
+</html>

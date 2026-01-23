@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call | ChatMate</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --primary: #00d2ff; --err: #ff4b2b; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; height: 100vh; overflow: hidden; font-family: 'Inter', sans-serif; color: white; }
+
+        /* Remote Full Screen Video */
+        #remote-video { width: 100vw; height: 100vh; object-fit: cover; background: #111; }
+
+        /* Draggable Local Video */
+        #local-video {
+            position: absolute; top: 20px; right: 20px;
+            width: 110px; height: 160px; border-radius: 12px;
+            border: 2px solid var(--primary); background: #222;
+            z-index: 100; object-fit: cover; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            touch-action: none; /* Mobile touch fixed */
+        }
+
+        /* Call Overlay Info */
+        .call-info {
+            position: absolute; top: 40px; left: 20px; display: flex; flex-direction: column; gap: 5px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Call Controls */
+        .controls {
+            position: absolute; bottom: 40px; left: 50%;
+            transform: translateX(-50%); display: flex; gap: 15px;
+            background: rgba(0,0,0,0.4); padding: 15px 25px;
+            border-radius: 40px; backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn {
+            width: 55px; height: 55px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 18px; cursor: pointer; transition: 0.3s;
+            background: rgba(255,255,255,0.15);
+        }
+        .btn:active { transform: scale(0.9); }
+        .btn-end { background: var(--err); }
+        .btn.off { background: white; color: black; }
+
+        /* Connection Status */
+        #status { font-size: 13px; color: var(--primary); }
+    </style>
+</head>
+<body>
+
+    <div class="call-info">
+        <h3 id="caller-name">Connecting...</h3>
+        <p id="status">Secure P2P Encrypted</p>
+    </div>
+
+    <video id="remote-video" autoplay playsinline></video>
+    <video id="local-video" autoplay muted playsinline></video>
+
+    <div class="controls">
+        <div class="btn" onclick="toggleMute()"><i class="fas fa-microphone" id="mic-icon"></i></div>
+        <div class="btn" onclick="toggleCamera()"><i class="fas fa-video" id="cam-icon"></i></div>
+        <div class="btn" onclick="togglePiP()"><i class="fas fa-external-link-alt"></i></div>
+        <div class="btn btn-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPhone = urlParams.get('phone');
+        const action = urlParams.get('action'); // 'call' or 'answer'
+        const myPhone = localStorage.getItem('user_phone');
+        
+        const peer = new Peer('chatmate-' + myPhone);
+        let localStream;
+        let currentCall;
+
+        // ১. মিডিয়া পারমিশন এবং ইনিশিয়ালাইজেশন
+        async function init() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+                
+                if (action === 'call') {
+                    makeCall();
+                }
+            } catch (err) {
+                alert("Camera/Mic access denied!");
+                window.history.back();
+            }
+        }
+
+        // ২. কল করা
+        function makeCall() {
+            document.getElementById('caller-name').innerText = "Calling " + targetPhone + "...";
+            const call = peer.call('chatmate-' + targetPhone, localStream);
+            handleCall(call);
+        }
+
+        // ৩. কল রিসিভ করা (Incoming call listener)
+        peer.on('call', async (incomingCall) => {
+            if (action === 'answer') {
+                incomingCall.answer(localStream);
+                handleCall(incomingCall);
+                document.getElementById('caller-name').innerText = "In Conversation";
+            }
+        });
+
+        // ৪. কল হ্যান্ডলার (Stream রিসিভ করা)
+        function handleCall(call) {
+            currentCall = call;
+            call.on('stream', remoteStream => {
+                const remoteVideo = document.getElementById('remote-video');
+                remoteVideo.srcObject = remoteStream;
+                document.getElementById('status').innerText = "Live";
+            });
+
+            call.on('close', () => endCall());
+        }
+
+        // ৫. ড্র্যাগেবল লোকাল ভিডিও (Mobile & Desktop Support)
+        const localVid = document.getElementById('local-video');
+        let offset = [0,0];
+        let isDown = false;
+
+        localVid.addEventListener('mousedown', startDrag);
+        localVid.addEventListener('touchstart', startDrag);
+
+        function startDrag(e) {
+            isDown = true;
+            let event = e.type === 'touchstart' ? e.touches[0] : e;
+            offset = [localVid.offsetLeft - event.clientX, localVid.offsetTop - event.clientY];
+            document.addEventListener('mousemove', moveDrag);
+            document.addEventListener('touchmove', moveDrag, {passive: false});
+        }
+
+        function moveDrag(e) {
+            if (!isDown) return;
+            e.preventDefault();
+            let event = e.type === 'touchmove' ? e.touches[0] : e;
+            localVid.style.left = (event.clientX + offset[0]) + 'px';
+            localVid.style.top = (event.clientY + offset[1]) + 'px';
+        }
+
+        document.addEventListener('mouseup', () => isDown = false);
+        document.addEventListener('touchend', () => isDown = false);
+
+        // ৬. কন্ট্রোল ফাংশনস
+        function toggleMute() {
+            let enabled = localStream.getAudioTracks()[0].enabled;
+            localStream.getAudioTracks()[0].enabled = !enabled;
+            const btn = document.getElementById('mic-icon').parentElement;
+            btn.classList.toggle('off', enabled);
+            document.getElementById('mic-icon').className = enabled ? 'fas fa-microphone-slash' : 'fas fa-microphone';
+        }
+
+        function toggleCamera() {
+            let enabled = localStream.getVideoTracks()[0].enabled;
+            localStream.getVideoTracks()[0].enabled = !enabled;
+            const btn = document.getElementById('cam-icon').parentElement;
+            btn.classList.toggle('off', enabled);
+            document.getElementById('cam-icon').className = enabled ? 'fas fa-video-slash' : 'fas fa-video';
+        }
+
+        async function togglePiP() {
+            try {
+                if (document.pictureInPictureElement) {
+                    await document.exitPictureInPicture();
+                } else {
+                    await document.getElementById('remote-video').requestPictureInPicture();
+                }
+            } catch (err) {
+                alert("PiP not supported on this browser");
+            }
+        }
+
+        function endCall() {
+            if(currentCall) currentCall.close();
+            if(localStream) localStream.getTracks().forEach(track => track.stop());
+            window.location.href = 'home.html';
+        }
+
+        peer.on('open', init);
+        peer.on('error', err => {
+            console.error(err);
+            alert("Connection error: User might be offline.");
+            endCall();
+        });
+    </script>
+</body>
+</html>

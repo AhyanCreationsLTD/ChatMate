@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatMate | Secure Home</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
+
+    <style>
+        :root { --primary: #00d2ff; --bg: #020617; --sidebar: #0f172a; --chat: #0b1120; --text: #f8fafc; --err: #ff4b2b; --success: #22c55e; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+
+        /* Header & Nav */
+        .top-nav { padding: 15px 20px; background: var(--sidebar); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .top-nav h1 { font-size: 20px; font-weight: 800; background: linear-gradient(to right, #00d2ff, #3a7bd5); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .nav-icons { display: flex; gap: 20px; align-items: center; }
+        .nav-icons i { font-size: 20px; cursor: pointer; color: #94a3b8; transition: 0.3s; }
+        .nav-icons i:hover { color: var(--primary); }
+        
+        /* Drawer Styles */
+        .drawer { position: fixed; top: 0; left: -280px; width: 280px; height: 100%; background: var(--sidebar); z-index: 1000; transition: 0.4s; box-shadow: 10px 0 30px rgba(0,0,0,0.5); padding: 20px; }
+        .drawer.active { left: 0; }
+        .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; z-index: 999; backdrop-filter: blur(4px); }
+        .drawer h2 { color: var(--primary); margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .menu-link { display: flex; align-items: center; gap: 15px; padding: 15px; color: var(--text); text-decoration: none; border-radius: 12px; margin-bottom: 5px; transition: 0.3s; }
+        .menu-link:hover { background: rgba(0, 210, 255, 0.1); color: var(--primary); }
+
+        .notif-badge { position: relative; cursor: pointer; }
+        .notif-badge span { position: absolute; top: -5px; right: -8px; background: var(--err); color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; }
+
+        /* Search Section */
+        .search-container { padding: 15px 20px; background: rgba(0,0,0,0.2); }
+        .search-box { background: #1e293b; display: flex; padding: 12px 15px; border-radius: 15px; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,0.05); }
+        .search-box input { background: transparent; border: none; color: white; flex: 1; outline: none; font-size: 14px; }
+        .search-box button { background: var(--primary); border: none; color: #000; padding: 5px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+
+        /* Chat List Section */
+        .chat-list { height: calc(100vh - 145px); overflow-y: auto; padding: 10px 0; }
+        .chat-item { display: flex; align-items: center; padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; transition: 0.2s; }
+        .chat-item:hover { background: rgba(255,255,255,0.03); }
+        .avatar-box { position: relative; margin-right: 15px; }
+        .avatar-box img { width: 55px; height: 55px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(0,210,255,0.2); }
+        .status-dot { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--sidebar); position: absolute; bottom: 2px; right: 2px; background: #64748b; }
+        .status-online { background: var(--success); }
+        
+        .chat-info { flex: 1; }
+        .chat-info h4 { font-size: 16px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .chat-info p { font-size: 13px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+        .time { font-size: 11px; color: #64748b; }
+
+        /* Context Menu (Long Press) */
+        #context-menu { position: fixed; background: #1e293b; border-radius: 12px; padding: 8px 0; box-shadow: 0 10px 40px rgba(0,0,0,0.6); display: none; z-index: 5000; min-width: 160px; border: 1px solid rgba(255,255,255,0.1); }
+        .menu-opt { padding: 12px 20px; cursor: pointer; color: var(--text); font-size: 14px; display: flex; align-items: center; gap: 10px; }
+        .menu-opt:hover { background: rgba(255,255,255,0.05); }
+        .menu-opt.delete { color: var(--err); }
+    </style>
+</head>
+<body>
+
+    <div class="drawer-overlay" id="overlay" onclick="toggleMenu()"></div>
+    <div class="drawer" id="drawer">
+        <h2>ChatMate</h2>
+        <a href="profile.html" class="menu-link"><i class="fas fa-user-circle"></i> My Profile</a>
+        <a href="terms.html" class="menu-link"><i class="fas fa-file-contract"></i> Terms & Conditions</a>
+        <a href="privacy.html" class="menu-link"><i class="fas fa-shield-alt"></i> Privacy Policy</a>
+        <a href="about.html" class="menu-link"><i class="fas fa-info-circle"></i> About ChatMate</a>
+        <a href="community.html" class="menu-link"><i class="fas fa-heart"></i> Support Community</a>
+        <div style="position: absolute; bottom: 30px; width: calc(100% - 40px);">
+            <button onclick="logout()" class="menu-link" style="width: 100%; border: none; background: rgba(255,75,43,0.1); color: var(--err); cursor: pointer;">
+                <i class="fas fa-power-off"></i> Logout
+            </button>
+        </div>
+    </div>
+
+    <div id="context-menu">
+        <div class="menu-opt" onclick="openProfile()"><i class="fas fa-info-circle"></i> View Profile</div>
+        <div class="menu-opt delete" id="delete-chat-btn"><i class="fas fa-user-minus"></i> Delete Contact</div>
+    </div>
+
+    <div class="top-nav">
+        <i class="fas fa-align-left" onclick="toggleMenu()" style="font-size: 22px; cursor: pointer; color: var(--primary);"></i>
+        <h1>ChatMate</h1>
+        <div class="nav-icons">
+            <div class="notif-badge" onclick="location.href='notifications.html'">
+                <i class="fas fa-bell"></i>
+                <span id="notif-count">0</span>
+            </div>
+            <i class="fas fa-plus-circle" style="color: var(--primary);" onclick="document.getElementById('new-phone').focus()"></i>
+        </div>
+    </div>
+
+    <div class="search-container">
+        <div class="search-box">
+            <i class="fas fa-search" style="color: #64748b"></i>
+            <input type="number" id="new-phone" placeholder="Search or add by phone...">
+            <button onclick="addContact()">ADD</button>
+        </div>
+    </div>
+
+    <div class="chat-list" id="chat-list">
+        </div>
+
+    <script>
+        const myPhone = localStorage.getItem('user_phone');
+        
+        // ১. সিকিউরিটি চেক: লগইন না থাকলে ফেরত পাঠানো
+        if (!myPhone) {
+            window.location.href = 'login.html';
+        }
+
+        // ২. PeerJS ভিডিও কলিং হ্যান্ডলার
+        const peer = new Peer('chatmate-' + myPhone); 
+
+        peer.on('open', (id) => console.log('Peer ID:', id));
+
+        peer.on('call', (incomingCall) => {
+            const callerId = incomingCall.peer.replace('chatmate-', '');
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3'); 
+            audio.loop = true;
+            audio.play();
+
+            const accept = confirm("Incoming Video Call from: " + callerId + "\n\nAnswer the call?");
+            if (accept) {
+                audio.pause();
+                window.location.href = `video-call.html?phone=${callerId}&action=answer`;
+            } else {
+                audio.pause();
+                incomingCall.close();
+            }
+        });
+
+        // ৩. ড্রয়ার টগল
+        function toggleMenu() {
+            const drawer = document.getElementById('drawer');
+            const overlay = document.getElementById('overlay');
+            drawer.classList.toggle('active');
+            overlay.style.display = drawer.classList.contains('active') ? 'block' : 'none';
+        }
+
+        // ৪. কন্টাক্ট অ্যাড করা (সুপাবেস ভেরিফিকেশনসহ)
+        async function addContact() {
+            const phone = document.getElementById('new-phone').value.trim();
+            if(!phone || phone === myPhone) return;
+
+            const { data, error } = await _sb.from('users').select('*').eq('phone', phone).single();
+            
+            if(data) {
+                // Gun.js এ সেভ করা (রিয়েল টাইম লিস্টের জন্য)
+                const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+                gun.get('chatmate_contacts').get(myPhone).get(phone).put({
+                    name: data.name,
+                    phone: data.phone,
+                    avatar: data.profile_pic || ''
+                });
+                alert(`${data.name} has been added!`);
+                document.getElementById('new-phone').value = "";
+            } else {
+                alert("This user is not on ChatMate yet.");
+            }
+        }
+
+        // ৫. চ্যাট লিস্ট লোড করা
+        function loadChats() {
+            const listDiv = document.getElementById('chat-list');
+            const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+            
+            gun.get('chatmate_contacts').get(myPhone).map().on((data, id) => {
+                if(!data) {
+                    const el = document.getElementById('item-' + id);
+                    if(el) el.remove();
+                    return;
+                }
+
+                let existing = document.getElementById('item-' + data.phone);
+                if(!existing) {
+                    existing = document.createElement('div');
+                    existing.id = 'item-' + data.phone;
+                    existing.className = 'chat-item';
+                    listDiv.prepend(existing);
+                }
+
+                existing.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    window.selectedUser = data.phone;
+                    const menu = document.getElementById('context-menu');
+                    menu.style.display = 'block';
+                    menu.style.left = e.pageX + 'px';
+                    menu.style.top = e.pageY + 'px';
+                };
+
+                existing.onclick = () => location.href = `chat.html?phone=${data.phone}`;
+
+                existing.innerHTML = `
+                    <div class="avatar-box">
+                        <img src="${data.avatar || 'https://ui-avatars.com/api/?name='+data.name+'&background=00d2ff&color=fff'}">
+                        <div class="status-dot status-online"></div>
+                    </div>
+                    <div class="chat-info">
+                        <h4>${data.name} <span class="time">Active</span></h4>
+                        <p>Click to send a message...</p>
+                    </div>
+                `;
+            });
+        }
+
+        // ৬. কন্টাক্ট ডিলিট করা
+        document.getElementById('delete-chat-btn').onclick = () => {
+            if(confirm("Are you sure you want to remove this contact?")) {
+                const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+                gun.get('chatmate_contacts').get(myPhone).get(window.selectedUser).put(null);
+                document.getElementById('context-menu').style.display = 'none';
+            }
+        };
+
+        function logout() {
+            if(confirm("Logout from ChatMate?")) {
+                localStorage.clear();
+                window.location.href = 'login.html';
+            }
+        }
+
+        function openProfile() {
+            location.href = `user-profile.html?phone=${window.selectedUser}`;
+        }
+
+        window.onclick = () => document.getElementById('context-menu').style.display = 'none';
+        window.onload = loadChats;
+    </script>
+</body>
+</html>
